@@ -5,6 +5,8 @@ Work with an ESP8266 and Domoticz ( and Dimmer switch )
 Needed : 
 ESP8266 
 Robotdyn AC light Dimmer Module ( 1 channel ) 
+Librairy : https://github.com/RobotDynOfficial/RBDDimmer
+
 
 Connection  : 
 GND > GND

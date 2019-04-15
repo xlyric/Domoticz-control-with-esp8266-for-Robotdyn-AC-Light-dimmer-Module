@@ -1,19 +1,29 @@
 -- Control ESP8266 with Dimmer
 
--- variables l'ESP8266
+-- Connection  : 
+-- GND > GND
+-- VCC > 3V 
+-- ZC > D5
+-- PWM > D6 
+
+-- variables  for ESP8266 connection
 IP="192.168.1.75"
+IDXNAME="Relay délestage"
+
+-- main program 
 
 commandArray = {}
 
-if (devicechanged['Relay délestage']) then
+if (devicechanged[IDXNAME]) then
 
-		-- recuperation de la puissance produite 
-	val_production = tonumber(otherdevices_svalues['Relay délestage'])
---	val_production=otherdevices['0062']
---	print("production = "..val_production*220)   
+		-- get Domoticz Dimmer information switch 
+	val_production = tonumber(otherdevices_svalues[IDXNAME])
 
+		-- send information to esp8266 dimmer
 		commandArray['OpenURL']=IP..'/?POWER='..val_production
-		print("commande faite à "..Info_Domoticz.."%")
+		
+		-- log action
+		print("commande send to :"..val_production.."%")
 end
 	
 return commandArray

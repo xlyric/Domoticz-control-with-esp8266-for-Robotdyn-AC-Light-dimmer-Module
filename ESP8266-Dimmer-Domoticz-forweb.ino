@@ -58,7 +58,8 @@
  *  more than 99 = 99 
  *  
  *    
- *  
+ *  Update 2019 04 28 
+ *  correct issue full power for many seconds at start 
  */
 
 
@@ -140,7 +141,15 @@ void handleSubmit() {
 
 void setup() {
   USE_SERIAL.begin(9600); 
+
+  /// Correction issue full power at start
+  pinMode(outputPin, OUTPUT); 
+  digitalWrite(outputPin, LOW);
+
+  
   dimmer.begin(NORMAL_MODE, ON); //dimmer initialisation: name.begin(MODE, STATE) 
+  dimmer.setPower(outVal); 
+  
   USE_SERIAL.println("Dimmer Program is starting...");
 
   /// wifi 
@@ -155,11 +164,7 @@ void setup() {
   }
   
 
- /// init de la puissance.
-  dimmer.setPower(outVal);
-  
- 
- // connexion OK, on demarre le server web // Start the server
+ // connexion OK, we start web server // Start the server
   
   server.on ( "/", handleRoot );
   

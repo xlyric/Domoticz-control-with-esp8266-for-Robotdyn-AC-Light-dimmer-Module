@@ -15,7 +15,7 @@ commandArray = {}
 	val_production = tonumber(otherdevices_svalues[INTENSITYNAME])
 	
 		-- get main external intensity
-	val_linky = tonumber(otherdevices_svalues[INTENSITYNAME])
+	val_linky = tonumber(otherdevices_svalues[LINKYINTENSITY])
 
 		-- get dimmer information
 	val_dimmer=tonumber(otherdevices_svalues[DIMMERNAME])

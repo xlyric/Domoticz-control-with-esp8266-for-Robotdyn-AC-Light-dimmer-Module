@@ -21,7 +21,8 @@ http://IP/?POWER=xx
 xx max = 99 
 
 Installation : 
-push .ino file on the esp8266. configure fixe IP from the DHCP on your internet box for use it
+push .ino file on the esp8266. at the first start it will create a new wifi network ( dimmer ) pwd : dimmer 
+and you can configure your network.
 
 copy script_device_dimmer_heater_control.lua and script_time_dimmer_heater_control.lua on domoticz ( domoticz/scripts/lua ) 
 
@@ -47,11 +48,13 @@ if production > noise >> dimmer is adjusted else dimmer = off
 
 --- 
 
-
+Special use: can be used with my pv router https://github.com/xlyric/Pv-router
+or with my 2 pzem program https://github.com/xlyric/multi-Pzem-esp8266-domoticz
 
 
 
 changelog
+-- 20190908 : change 1st connection wifi process, create a network "dimmer" with password "dimmer"
 -- 20190415 : add comment and translate into english 
 -- 210904xx : creation and fonctionnal tests, bug corrections, limit verbosity and command sent
 

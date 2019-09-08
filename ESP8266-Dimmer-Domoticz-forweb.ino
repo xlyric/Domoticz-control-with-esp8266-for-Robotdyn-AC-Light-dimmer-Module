@@ -68,14 +68,14 @@
 #include <RBDdimmer.h>//
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <WiFiManager.h>  /// librairy : >> search  'wifimanager'  by tzapu
 
 /***************************
  * Begin Settings
  **************************/
 
 // WIFI
-const char* WIFI_SSID = "MySSID";
-const char* WIFI_PWD = "Mypwd";
+// At first launch, create wifi network 'dimmer'  ( pwd : dimmer ) 
 
 /// Webserver init
 ESP8266WebServer server ( 80 );
@@ -153,15 +153,8 @@ void setup() {
   USE_SERIAL.println("Dimmer Program is starting...");
 
   /// wifi 
-  WiFi.begin(WIFI_SSID, WIFI_PWD);
-
-  int counter = 0;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    
-    counter++;
-  }
+  WiFiManager wifiManager;
+  wifiManager.autoConnect("dimmer", "dimmer");
   
 
  // connexion OK, we start web server // Start the server

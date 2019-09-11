@@ -21,6 +21,7 @@ http://IP/?POWER=xx
 xx max = 99 
 
 Installation : 
+you must install the wifimanager library in your library manager (https://github.com/tzapu/WiFiManager#install-through-library-manager ) 
 push .ino file on the esp8266. at the first start it will create a new wifi network ( dimmer ) pwd : dimmer 
 and you can configure your network.
 

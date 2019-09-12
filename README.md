@@ -59,7 +59,21 @@ changelog
 -- 20190415 : add comment and translate into english 
 -- 210904xx : creation and fonctionnal tests, bug corrections, limit verbosity and command sent
 
+----- fresh install of IDE
+IDE
+https://www.arduino.cc/download.php?f=/arduino-nightly-windows.zip ( or other OS ) 
+Dimmer Librairy
+https://github.com/RobotDynOfficial/RBDDimmer
 
+Start Arduino and open Preferences window.
+Enter http://arduino.esp8266.com/stable/package_esp8266com_index.json into Additional Board Manager URLs field. You can add multiple URLs, separating them with commas.
+Open Boards Manager from Tools > Board menu and find esp8266 platform.
+Select the version you need from a drop-down box.
+Click install button.
+Don't forget to select your ESP8266 board from Tools > Board menu after installation.
+
+
+librairy of wifimanager : >> search  'wifimanager'  by tzapu in the library installation  ( ctrl + maj + i )
 
 
 

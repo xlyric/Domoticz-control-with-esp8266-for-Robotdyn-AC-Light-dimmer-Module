@@ -61,8 +61,11 @@ changelog
 
 ----- fresh install of IDE
 IDE
+
 https://www.arduino.cc/download.php?f=/arduino-nightly-windows.zip ( or other OS ) 
+
 Dimmer Librairy
+
 https://github.com/RobotDynOfficial/RBDDimmer
 
 Start Arduino and open Preferences window.

@@ -1,8 +1,7 @@
 /**************
- *  RobotDyn
- *  Dimmer Library
+ *  numeric Dimmer  ( using robodyn dimmer = 
  *  **************
- *  Updated By Cyril Poissonnier 2020
+ *  Upgraded By Cyril Poissonnier 2020
  * 
   *    
  * 
@@ -51,19 +50,27 @@
  *  Work for dimmer on Domoticz or Web command :
  *  http://URL/?POWER=XX 
  *  0 -> 99 
- *  more than 99 = 99 
- *  
+ *  more than 99 = 99  
  *    
  *  Update 2019 04 28 
  *  correct issue full power for many seconds at start 
  *  Update 2020 01 13 
  *  Version 2 with cute web interface
- *  
+ *  V2.1    with temperature security ( dallas 18b20 ) 
+ *          MQTT to Domoticz for temp 
  */
 
 
 
-#include <RBDdimmer.h>   /// the corrected librairy  https://github.com/RobotDynOfficial/RBDDimmer/issues/14 
+
+/***************************
+ * Librairy
+ **************************/
+
+// time librairy   
+#include <NTPClient.h>
+// Dimmer librairy 
+#include <RBDdimmer.h>   /// the corrected librairy  in RBDDimmer-master-corrected.rar , the original has a bug
 // Web services
 #include <ESP8266WiFi.h>
 #include <ESPAsyncWiFiManager.h>    
@@ -76,13 +83,25 @@
 // ota mise à jour sans fil
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-
+// Dallas 18b20
+#include <OneWire.h>
+#include <DallasTemperature.h>
+//mqtt
+#include <PubSubClient.h>
+#define mqtt_user "Dimmer"
+const char* mqtt_server = "192.168.1.20";
+#define IDX 61
 
 /***************************
  * Begin Settings
  **************************/
 
-const String VERSION = "Version 2.0" ;
+const String VERSION = "Version 2.1" ;
+
+/***************************
+ * temperature de sécurité
+ **************************/
+#define MAXTEMP 75
 
 // WIFI
 // At first launch, create wifi network 'dimmer'  ( pwd : dimmer ) 
@@ -92,6 +111,8 @@ const String VERSION = "Version 2.0" ;
 //***********************************
 // Create AsyncWebServer object on port 80
 WiFiClient domotic_client;
+// mqtt
+PubSubClient client(domotic_client);
 
 AsyncWebServer server(80);
 DNSServer dns;
@@ -101,10 +122,41 @@ HTTPClient http;
 
 int puissance = 0 ;
 
+//***********************************
+//************* Time
+//***********************************
+const long utcOffsetInSeconds = 3600;
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
+int timesync = 0; 
+int timesync_refresh = 120; 
+
 //#define USE_SERIAL  SerialUSB //Serial for boards whith USB serial port
 #define USE_SERIAL  Serial
 #define outputPin  D6 
 #define zerocross  D5 // for boards with CHANGEBLE input pins
+
+
+//***********************************
+//************* Dallas
+//***********************************
+#define TEMPERATURE_PRECISION 10
+#define ONE_WIRE_BUS D7
+
+OneWire  ds(ONE_WIRE_BUS);  //  (a 4.7K resistor is necessary - 5.7K work with 3.3 ans 5V power)
+DallasTemperature sensors(&ds);
+
+
+  byte i;
+  byte present = 0;
+  byte type_s;
+  byte data[12];
+  byte addr[8];
+  float celsius = 0 ;
+  byte security = 0;
+
+
 
 /***************************
  * End Settings
@@ -126,7 +178,7 @@ const char* PARAM_INPUT_1 = "POWER"; /// paramettre de retour sendmode
 
 String getState() {
   String state; 
-  state = dimmer.getPower(); 
+  state = dimmer.getPower() + ";" + String(celsius) ; 
   return String(state);
 }
 
@@ -139,8 +191,21 @@ String processor(const String& var){
     if (var == "VERSION"){
     return (VERSION);
   } 
+  if (var == "TIME"){
+    return getTime();
+  } 
 } 
  
+void call_time() {
+	if ( timesync_refresh >= timesync ) {  timeClient.update(); timesync = 0; }
+	else {timesync++;} 
+} 
+ 
+String getTime() {
+  String state; 
+  state = timeClient.getHours() + ":" + timeClient.getMinutes() ; 
+  return String(state);
+}
 
     //***********************************
     //************* Setup 
@@ -224,6 +289,10 @@ void setup() {
     request->send_P(200, "text/plain", getState().c_str());
   });
 
+  server.on("/time", HTTP_ANY, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/plain", getTime().c_str());
+  });
+
   server.on("/all.min.css", HTTP_ANY, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/all.min.css", "text/css");
   });
@@ -249,11 +318,171 @@ void setup() {
     //***********************************
     //************* Setup -  demarrage du webserver et affichage de l'oled
     //***********************************
-
+  Serial.println("start server");
   server.begin(); 
+  
+  Serial.println("start ntp");
+  timeClient.begin();
+  timeClient.update();
+  
+  Serial.println("start 18b20");
+  sensors.begin();
+  dallaspresent();
+
+  client.connect("Dimmer");
+  client.setServer(mqtt_server, 1883);
+  
 
 }
 
 void loop() {
 
+  if ( security == 1 ) { 
+    //// Trigger
+      if ( celsius <= MAXTEMP - 5 ) { 
+       security = 0 ;
+      }
+      else {
+      dimmer.setPower(0); 
+      }
+  }
+
+
+  if ( present == 1 ) { 
+  sensors.requestTemperatures();
+  CheckTemperature("Inside : ", addr); 
+  mqtt(String(IDX), String(celsius));  
+  delay(5000); 
+  }
+
+    //***********************************
+    //************* LOOP - Activation de la sécurité
+    //***********************************
+if ( celsius >= MAXTEMP ) {
+  security = 1 ; 
+}
+
+ ArduinoOTA.handle();
+}
+
+
+
+    //***********************************
+    //************* récupération d'une température du 18b20
+    //***********************************
+
+void CheckTemperature(String label, byte deviceAddress[12]){
+  float tempC = sensors.getTempC(deviceAddress);
+  Serial.print(label);
+  if (tempC == -127.00) {
+    Serial.print("Error getting temperature");
+  } else {
+    Serial.print(" Temp C: ");
+    Serial.print(tempC);
+    celsius = tempC; 
+   
+    
+  }  
+}
+
+
+    //***********************************
+    //************* Test de la présence d'une 18b20 
+    //***********************************
+
+void dallaspresent () {
+
+if ( !ds.search(addr)) {
+    Serial.println("Dallas not connected");
+    Serial.println();
+    ds.reset_search();
+    delay(250);
+    return ;
+  }
+  
+  Serial.print("ROM =");
+  for( i = 0; i < 8; i++) {
+    Serial.write(' ');
+    Serial.print(addr[i], HEX);
+  }
+
+   Serial.println();
+ 
+  // the first ROM byte indicates which chip
+  switch (addr[0]) {
+    case 0x10:
+      Serial.println("  Chip = DS18S20");  // or old DS1820
+      type_s = 1;
+      break;
+    case 0x28:
+      Serial.println("  Chip = DS18B20");
+      type_s = 0;
+      break;
+    case 0x22:
+      Serial.println("  Chip = DS1822");
+      type_s = 0;
+      break;
+    default:
+      Serial.println("Device is not a DS18x20 family device.");
+      return ;
+  } 
+
+  ds.reset();
+  ds.select(addr);
+  ds.write(0x44, 1);        // start conversion, with parasite power on at the end
+  
+  delay(1000);     // maybe 750ms is enough, maybe not
+  // we might do a ds.depower() here, but the reset will take care of it.
+  
+  present = ds.reset();    ///  byte 0 > 1 si present
+  ds.select(addr);    
+  ds.write(0xBE);         // Read Scratchpad
+
+  Serial.print("  present = ");
+  Serial.println(present, HEX);
+
+
+  return ;
+  
+  
+  }
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Create a random client ID
+    String clientId = "ESP8266Client-";
+    clientId += String(random(0xffff), HEX);
+    // Attempt to connect
+    if (client.connect(clientId.c_str())) {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      client.publish("outTopic", "hello world");
+      // ... and resubscribe
+      client.subscribe("inTopic");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
+
+
+void mqtt(String idx, String value)
+{
+  String nvalue = "0" ; 
+  if ( value != "0" ) { nvalue = "2" ; }
+String message = "  { \"idx\" : " + idx +" ,   \"svalue\" : \"" + value + "\",  \"nvalue\" : " + nvalue + "  } ";
+
+  if (!client.connected()) {
+    reconnect();
+  }
+client.loop();
+  client.publish("domoticz/in", String(message).c_str(), true);
+  
 }

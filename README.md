@@ -14,10 +14,25 @@ VCC > 3V
 ZC > D5
 PWM > D6 
 
+----- USE -------
+
 Control : 
 http://IP/?POWER=xx
  
 xx max = 99 
+
+---- change config by web -- 
+
+http://IP/set?save  >> save config on spiffs
+http://IP/set?hostname= IP of MQTT 
+http://IP/set?port= port of MQTT
+http://IP/set?IDX= IDX of dimmer
+http://IP/set?IDXAlarme= IDX of Alarme;
+http://IP/set?maxtemp= Max temp 
+http://IP/set?Publish= publish of MQTT
+  
+
+----------------------
 
 Optional : 
 - Dallas 18b20 Connected on D7 with 3.3 or 5V power and 4.7 or 5.6Kohms resistance between D7 and power
@@ -67,7 +82,12 @@ or with my 2 pzem program https://github.com/xlyric/multi-Pzem-esp8266-domoticz
 
 
 
+
+
+
+-----------------------------
 changelog
+-- 20200402 ; ADD online config change and stored in spiffs
 -- 20200402 ; Add MQTT support, Dallas Options and max temp alert and cut the dimmer ( with trigger of 5° ) 
 -- 20190908 : change 1st connection wifi process, create a network "dimmer" with password "dimmer"
 -- 20190415 : add comment and translate into english 

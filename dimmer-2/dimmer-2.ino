@@ -80,6 +80,7 @@
 // File System
 #include <fs.h>
 #include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
+#include <ArduinoJson.h> // ArduinoJson : https://github.com/bblanchon/ArduinoJson
 // ota mise à jour sans fil
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
@@ -89,9 +90,9 @@
 //mqtt
 #include <PubSubClient.h>
 #define mqtt_user "Dimmer"
-const char* mqtt_server = "192.168.1.20";
-#define IDX 61
-#define idxalarme 100   //beta
+//const char* mqtt_server = "192.168.1.20";
+//#define IDX 61
+//#define idxalarme 100   //beta
 
 /***************************
  * Begin Settings
@@ -102,7 +103,7 @@ const String VERSION = "Version 2.1" ;
 /***************************
  * temperature de sécurité
  **************************/
-#define MAXTEMP 75
+//#define MAXTEMP 75
 
 // WIFI
 // At first launch, create wifi network 'dimmer'  ( pwd : dimmer ) 
@@ -165,9 +166,98 @@ DallasTemperature sensors(&ds);
  * End Settings
  **************************/
 
+//***********************************
+//************* Gestion de la configuration
+//***********************************
+
+struct Config {
+  char hostname[15];
+  int port;
+  String IDX;
+  String IDXAlarme;
+  int maxtemp;
+  char Publish[100];
+  
+};
+
+const char *filename_conf = "/config.json";
+Config config; 
+
+//***********************************
+//************* Gestion de la configuration - Lecture du fichier de configuration
+//***********************************
+
+// Loads the configuration from a file
+void loadConfiguration(const char *filename, Config &config) {
+  // Open file for reading
+  File configFile = SPIFFS.open(filename_conf, "r");
+
+  // Allocate a temporary JsonDocument
+  // Don't forget to change the capacity to match your requirements.
+  // Use arduinojson.org/v6/assistant to compute the capacity.
+  StaticJsonDocument<512> doc;
+
+  // Deserialize the JSON document
+  DeserializationError error = deserializeJson(doc, configFile);
+  if (error)
+    Serial.println(F("Failed to read file, using default configuration"));
+
+  // Copy values from the JsonDocument to the Config
+  config.port = doc["port"] | 1883;
+  strlcpy(config.hostname,                  // <- destination
+          doc["hostname"] | "192.168.1.20", // <- source
+          sizeof(config.hostname));         // <- destination's capacity
+  config.IDX = doc["IDX"] | 61; 
+  config.IDXAlarme = doc["IDXAlarme"] | 100; 
+  config.maxtemp = doc["maxtemp"] | 75; 
+  strlcpy(config.Publish,                  // <- destination
+          doc["Publish"] | "domoticz/in", // <- source
+          sizeof(config.Publish));         // <- destination's capacity
+  configFile.close();
+      
+}
+
+//***********************************
+//************* Gestion de la configuration - sauvegarde du fichier de configuration
+//***********************************
+
+void saveConfiguration(const char *filename, const Config &config) {
+  
+  // Open file for writing
+   File configFile = SPIFFS.open(filename_conf, "w");
+  if (!configFile) {
+    Serial.println(F("Failed to open config file for writing"));
+    return;
+  }
+
+  // Allocate a temporary JsonDocument
+  // Don't forget to change the capacity to match your requirements.
+  // Use arduinojson.org/assistant to compute the capacity.
+  StaticJsonDocument<512> doc;
+
+  // Set the values in the document
+  doc["hostname"] = config.hostname;
+  doc["port"] = config.port;
+  doc["IDX"] = config.IDX;
+  doc["IDXAlarme"] = config.IDXAlarme;
+  doc["maxtemp"] = config.maxtemp;
+  doc["Publish"] = config.Publish;
+  
 
 
-///// init Dimmer
+  // Serialize JSON to file
+  if (serializeJson(doc, configFile) == 0) {
+    Serial.println(F("Failed to write to file"));
+  }
+
+  // Close the file
+  configFile.close();
+}
+ 
+
+/***************************
+ * init Dimmer
+ **************************/
 
 dimmerLamp dimmer(outputPin, zerocross); //initialase port for dimmer for ESP8266, ESP32, Arduino due boards
 //dimmerLamp dimmer(outputPin); //initialase port for dimmer for MEGA, Leonardo, UNO, Arduino M0, Arduino Zero
@@ -178,6 +268,7 @@ int outVal = 0;
     //************* function web 
     //***********************************
 const char* PARAM_INPUT_1 = "POWER"; /// paramettre de retour sendmode
+
 
 String getState() {
   String state; 
@@ -210,6 +301,12 @@ String getTime() {
   return String(state);
 }
 
+String getconfig() {
+  String configweb;  
+  configweb = String(config.hostname) + ";" +  config.port + ";"  + config.IDX + ";"  +  config.IDXAlarme +";"+config.maxtemp+";"+config.Publish;
+  return String(configweb);
+}
+
     //***********************************
     //************* Setup 
     //***********************************
@@ -230,6 +327,20 @@ void setup() {
   dimmer.setPower(outVal); 
   
   USE_SERIAL.println("Dimmer Program is starting...");
+
+      //***********************************
+    //************* Setup -  récupération du fichier de configuration
+    //***********************************
+  
+  // Should load default config if run for the first time
+  Serial.println(F("Loading configuration..."));
+  loadConfiguration(filename_conf, config);
+
+  // Create configuration file
+  Serial.println(F("Saving configuration..."));
+  saveConfiguration(filename_conf, config);
+
+  
 
     //***********************************
     //************* Setup - Connexion Wifi
@@ -316,6 +427,33 @@ void setup() {
     request->send(SPIFFS, "/sb-admin-2.min.css", "text/css");
   });
 
+  server.on("/config.json", HTTP_ANY, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/config.json", "application/json");
+  });
+
+/////////////////////////
+////// mise à jour parametre d'envoie vers domoticz et récupération des modifications de configurations
+/////////////////////////
+
+server.on("/set", HTTP_ANY, [] (AsyncWebServerRequest *request) {
+      ///   /set?paramettre=xxxx
+    if (request->hasParam("save")) { Serial.println(F("Saving configuration..."));
+                          saveConfiguration(filename_conf, config);   
+                            }
+                          
+   if (request->hasParam("hostname")) { request->getParam("hostname")->value().toCharArray(config.hostname,15);  }
+   if (request->hasParam("port")) { config.port = request->getParam("port")->value().toInt();}
+   if (request->hasParam("IDX")) { config.IDX = request->getParam("IDX")->value().toInt();}
+   if (request->hasParam("IDXAlarme")) { config.IDXAlarme = request->getParam("IDXAlarme")->value().toInt();}
+   if (request->hasParam("maxtemp")) { config.maxtemp = request->getParam("maxtemp")->value().toInt();}
+   if (request->hasParam("Publish")) { request->getParam("Publish")->value().toCharArray(config.Publish,100);}
+   request->send(200, "text/html", getconfig().c_str());
+
+  });
+
+
+
+
 
 
     //***********************************
@@ -333,7 +471,7 @@ void setup() {
   dallaspresent();
 
   client.connect("Dimmer");
-  client.setServer(mqtt_server, 1883);
+  client.setServer(config.hostname, 1883);
   
 
 }
@@ -342,9 +480,9 @@ void loop() {
 
   if ( security == 1 ) { 
       Serial.println("Alerte Temp");
-      mqtt(String(idxalarme), String("Alerte Temp :" + String(celsius) ));  
+      mqtt(config.IDXAlarme, String("Alerte Temp :" + String(celsius) ));  
     //// Trigger
-      if ( celsius <= MAXTEMP - 5 ) { 
+      if ( celsius <= config.maxtemp - 5 ) { 
        security = 0 ;
       }
       else {
@@ -360,7 +498,7 @@ void loop() {
   CheckTemperature("Inside : ", addr); 
   
   if ( refreshcount >= refresh ) {
-    mqtt(String(IDX), String(celsius));  
+    mqtt(config.IDX, String(celsius));  
     refreshcount = 0; 
   }
   
@@ -370,7 +508,7 @@ void loop() {
     //***********************************
     //************* LOOP - Activation de la sécurité
     //***********************************
-if ( celsius >= MAXTEMP ) {
+if ( celsius >= config.maxtemp ) {
   security = 1 ; 
 }
 

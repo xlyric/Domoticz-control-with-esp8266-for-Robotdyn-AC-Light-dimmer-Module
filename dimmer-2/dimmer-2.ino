@@ -272,7 +272,8 @@ const char* PARAM_INPUT_1 = "POWER"; /// paramettre de retour sendmode
 
 String getState() {
   String state; 
-  state = dimmer.getPower() + ";" + String(celsius) ; 
+  int pow=dimmer.getPower(); 
+  state = String(pow) + ";" + String(celsius) ; 
   return String(state);
 }
 

@@ -91,6 +91,7 @@
 #define mqtt_user "Dimmer"
 const char* mqtt_server = "192.168.1.20";
 #define IDX 61
+#define idxalarme 100   //beta
 
 /***************************
  * Begin Settings
@@ -132,6 +133,8 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 int timesync = 0; 
 int timesync_refresh = 120; 
 
+// *************************************
+
 //#define USE_SERIAL  SerialUSB //Serial for boards whith USB serial port
 #define USE_SERIAL  Serial
 #define outputPin  D6 
@@ -155,8 +158,8 @@ DallasTemperature sensors(&ds);
   byte addr[8];
   float celsius = 0 ;
   byte security = 0;
-
-
+  int refresh = 12;
+  int refreshcount = 0; 
 
 /***************************
  * End Settings
@@ -338,6 +341,8 @@ void setup() {
 void loop() {
 
   if ( security == 1 ) { 
+      Serial.println("Alerte Temp");
+      mqtt(String(idxalarme), String("Alerte Temp :" + String(celsius) ));  
     //// Trigger
       if ( celsius <= MAXTEMP - 5 ) { 
        security = 0 ;
@@ -349,9 +354,16 @@ void loop() {
 
 
   if ( present == 1 ) { 
+  refreshcount ++; 
+
   sensors.requestTemperatures();
   CheckTemperature("Inside : ", addr); 
-  mqtt(String(IDX), String(celsius));  
+  
+  if ( refreshcount >= refresh ) {
+    mqtt(String(IDX), String(celsius));  
+    refreshcount = 0; 
+  }
+  
   delay(5000); 
   }
 

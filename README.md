@@ -8,7 +8,6 @@ Robotdyn AC light Dimmer Module ( 1 channel )
 Librairy : https://github.com/RobotDynOfficial/RBDDimmer
 A domoticz server with one or more power information
 
-
 Connection  : 
 GND > GND
 VCC > 3V 
@@ -20,12 +19,22 @@ http://IP/?POWER=xx
  
 xx max = 99 
 
+Optional : 
+- Dallas 18b20 Connected on D7 with 3.3 or 5V power and 4.7 or 5.6Kohms resistance between D7 and power
+
+
 Installation : 
+
 you must install the wifimanager library in your library manager (https://github.com/tzapu/WiFiManager#install-through-library-manager ) 
-push .ino file on the esp8266. at the first start it will create a new wifi network ( dimmer ) pwd : dimmer 
+push .ino file on the esp8266.
+
+
+At the first start it will create a new wifi network ( dimmer ) pwd : dimmer 
 and you can configure your network.
 
+For Domoticz 
 copy script_device_dimmer_heater_control.lua and script_time_dimmer_heater_control.lua on domoticz ( domoticz/scripts/lua ) 
+
 
 change IP of the esp8266 with the dimmer  on script_device_dimmer_heater_control.lua
 -------------
@@ -34,6 +43,10 @@ IP="192.168.x.x"
 
 create on domoticz a dimmer switch
 and change variables on script_time_dimmer_heater_control.lua with your configuration. 
+
+
+with option Dallas 18b20 there is an alert limit send by MQTT 
+
 
 ---------- working process  ---- 
 
@@ -55,9 +68,11 @@ or with my 2 pzem program https://github.com/xlyric/multi-Pzem-esp8266-domoticz
 
 
 changelog
+-- 20200402 ; Add MQTT support, Dallas Options and max temp alert and cut the dimmer ( with trigger of 5° ) 
 -- 20190908 : change 1st connection wifi process, create a network "dimmer" with password "dimmer"
 -- 20190415 : add comment and translate into english 
 -- 210904xx : creation and fonctionnal tests, bug corrections, limit verbosity and command sent
+
 
 ----- fresh install of IDE
 IDE

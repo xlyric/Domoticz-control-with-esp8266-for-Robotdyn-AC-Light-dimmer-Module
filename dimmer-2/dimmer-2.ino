@@ -98,7 +98,7 @@
  * Begin Settings
  **************************/
 
-const String VERSION = "Version 2.1" ;
+const String VERSION = "Version 2.2" ;
 
 /***************************
  * temperature de sécurité

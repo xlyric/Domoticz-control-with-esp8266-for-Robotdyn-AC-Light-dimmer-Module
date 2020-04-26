@@ -68,7 +68,7 @@
  **************************/
 
 // time librairy   
-#include <NTPClient.h>
+//#include <NTPClient.h>
 // Dimmer librairy 
 #include <RBDdimmer.h>   /// the corrected librairy  in RBDDimmer-master-corrected.rar , the original has a bug
 // Web services
@@ -123,14 +123,15 @@ HTTPClient http;
 //////////
 
 int puissance = 0 ;
+int change = 0; 
 
 //***********************************
 //************* Time
 //***********************************
-const long utcOffsetInSeconds = 3600;
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
+//const long utcOffsetInSeconds = 3600;
+//char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+//WiFiUDP ntpUDP;
+//NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 int timesync = 0; 
 int timesync_refresh = 120; 
 
@@ -150,16 +151,16 @@ int timesync_refresh = 120;
 
 OneWire  ds(ONE_WIRE_BUS);  //  (a 4.7K resistor is necessary - 5.7K work with 3.3 ans 5V power)
 DallasTemperature sensors(&ds);
-
+DeviceAddress insideThermometer;
 
   byte i;
   byte present = 0;
   byte type_s;
   byte data[12];
   byte addr[8];
-  float celsius = 0 ;
+  float celsius = 0.00 ;
   byte security = 0;
-  int refresh = 12;
+  int refresh = 30;
   int refreshcount = 0; 
 
 /***************************
@@ -292,13 +293,13 @@ String processor(const String& var){
 } 
  
 void call_time() {
-	if ( timesync_refresh >= timesync ) {  timeClient.update(); timesync = 0; }
-	else {timesync++;} 
+	//if ( timesync_refresh >= timesync ) {  timeClient.update(); timesync = 0; }
+	//else {timesync++;} 
 } 
  
 String getTime() {
-  String state; 
-  state = timeClient.getHours() + ":" + timeClient.getMinutes() ; 
+  String state=""; 
+ // state = timeClient.getHours() + ":" + timeClient.getMinutes() ; 
   return String(state);
 }
 
@@ -394,8 +395,13 @@ void setup() {
    
    server.on("/",HTTP_ANY, [](AsyncWebServerRequest *request){
     
-    if (request->hasParam(PARAM_INPUT_1)) { puissance = request->getParam(PARAM_INPUT_1)->value().toInt();  dimmer.setPower(puissance); request->send_P(200, "text/plain", getState().c_str());  }
-    else request->send(SPIFFS, "/index.html", String(), false, processor);
+    if (request->hasParam(PARAM_INPUT_1)) { 
+      puissance = request->getParam(PARAM_INPUT_1)->value().toInt();  
+      change=1; 
+      request->send_P(200, "text/plain", getState().c_str());  
+      
+      }
+    else   request->send(SPIFFS, "/index.html", String(), false, processor);
 
     
   }); 
@@ -463,12 +469,18 @@ server.on("/set", HTTP_ANY, [] (AsyncWebServerRequest *request) {
   Serial.println("start server");
   server.begin(); 
   
-  Serial.println("start ntp");
-  timeClient.begin();
-  timeClient.update();
+ // Serial.println("start ntp");
+ // timeClient.begin();
+ // timeClient.update();
   
   Serial.println("start 18b20");
   sensors.begin();
+  /*if (!sensors.getAddress(insideThermometer, 0)) Serial.println("Unable to find address for Device 0"); 
+  Serial.print("Device 0 Address: ");
+  printAddress(insideThermometer);
+  sensors.setResolution(insideThermometer, 9);
+*/
+  
   dallaspresent();
 
   client.connect("Dimmer");
@@ -492,19 +504,28 @@ void loop() {
   }
 
 
+
+  /// Changement de la puissance (  pb de Exception 9 si call direct ) 
+  if ( change == 1  ) {
+
+  dimmer.setPower(puissance); 
+  change = 0; 
+  }
+
+ ///// dallas présent >> mesure 
   if ( present == 1 ) { 
-  refreshcount ++; 
+ refreshcount ++; 
 
   sensors.requestTemperatures();
-  CheckTemperature("Inside : ", addr); 
-  
+  celsius=CheckTemperature("Inside : ", addr); 
+
   if ( refreshcount >= refresh ) {
     mqtt(config.IDX, String(celsius));  
     refreshcount = 0; 
-  }
+  } 
   
-  delay(5000); 
-  }
+  delay(500); 
+  } 
 
     //***********************************
     //************* LOOP - Activation de la sécurité
@@ -513,7 +534,12 @@ if ( celsius >= config.maxtemp ) {
   security = 1 ; 
 }
 
+///  changement de la puissance
+
+
+
  ArduinoOTA.handle();
+ delay(500); 
 }
 
 
@@ -522,15 +548,15 @@ if ( celsius >= config.maxtemp ) {
     //************* récupération d'une température du 18b20
     //***********************************
 
-void CheckTemperature(String label, byte deviceAddress[12]){
+float CheckTemperature(String label, byte deviceAddress[12]){
   float tempC = sensors.getTempC(deviceAddress);
   Serial.print(label);
   if (tempC == -127.00) {
     Serial.print("Error getting temperature");
   } else {
     Serial.print(" Temp C: ");
-    Serial.print(tempC);
-    celsius = tempC; 
+    Serial.println(tempC);
+    return (tempC); 
    
     
   }  
@@ -634,6 +660,9 @@ String message = "  { \"idx\" : " + idx +" ,   \"svalue\" : \"" + value + "\",  
     reconnect();
   }
 client.loop();
-  client.publish("domoticz/in", String(message).c_str(), true);
+  client.publish(config.Publish, String(message).c_str(), true);
   
 }
+
+
+

@@ -656,9 +656,9 @@ void mqtt(String idx, String value)
   if ( value != "0" ) { nvalue = "2" ; }
 String message = "  { \"idx\" : " + idx +" ,   \"svalue\" : \"" + value + "\",  \"nvalue\" : " + nvalue + "  } ";
 
-  if (!client.connected()) {
-    reconnect();
-  }
+//  if (!client.connected()) {
+//    reconnect();
+ // }
 client.loop();
   client.publish(config.Publish, String(message).c_str(), true);
   

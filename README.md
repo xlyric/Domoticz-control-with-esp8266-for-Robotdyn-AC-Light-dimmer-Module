@@ -1,4 +1,8 @@
 # Domoticz control with esp8266 for Robotdyn AC Light dimmer Module
+Note: this is a modified version of https://github.com/xlyric/Domoticz-control-with-esp8266-for-Robotdyn-AC-Light-dimmer-Module
+Basically it corrects the very buggy RBDDimmer library from Robodyn
+
+******
 
 Work with an ESP8266 and Domoticz ( and Dimmer switch ) 
 

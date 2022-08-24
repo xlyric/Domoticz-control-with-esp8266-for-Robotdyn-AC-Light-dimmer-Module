@@ -1,8 +1,8 @@
 /**************
- *  numeric Dimmer  ( using robodyn dimmer =  
+ *  numeric Dimmer  ( using robodyn dimmer = 
  *  **************
  *  Upgraded By Cyril Poissonnier 2020
- *  FOR ESP01 
+ * 
   *    
  * 
  *  ---------------------- OUTPUT & INPUT Pin table ---------------------
@@ -68,14 +68,14 @@
  **************************/
 
 // time librairy   
-
+//#include <NTPClient.h>
 // Dimmer librairy 
-#include <RBDdimmer.h>   /// the corrected librairy  in RBDDimmer-master-corrected.rar , the original has a bug
+#include "RBDdimmer.h"   /// modified Robodyn library
 // Web services
 #include <ESP8266WiFi.h>
-#include <ESPAsyncWiFiManager.h>    
-#include <ESPAsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#include <ESPAsyncWiFiManager.h> //https://github.com/alanswx/ESPAsyncWiFiManager   install par zip
+#include <ESPAsyncTCP.h>         //https://github.com/me-no-dev/ESPAsyncTCP install par zip
+#include <ESPAsyncWebServer.h>  //https://github.com/me-no-dev/ESPAsyncWebServer#installation install par zip
 #include <ESP8266HTTPClient.h> 
 // File System
 #include <fs.h>
@@ -85,8 +85,10 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 // Dallas 18b20
+#include <OneWire.h> //library manager by Paul Stoffregen
+#include <DallasTemperature.h> // library manager by Miles Burton
 //mqtt
-#include <PubSubClient.h>
+#include <PubSubClient.h>   // library Manager by Nick O'Leary
 #define mqtt_user "Dimmer"
 //const char* mqtt_server = "192.168.1.20";
 //#define IDX 61
@@ -137,9 +139,29 @@ int timesync_refresh = 120;
 
 //#define USE_SERIAL  SerialUSB //Serial for boards whith USB serial port
 #define USE_SERIAL  Serial
-#define outputPin  0 
-#define zerocross  2 // for boards with CHANGEBLE input pins
+#define outputPin  D6 
+#define zerocross  D5 // for boards with CHANGEBLE input pins
 
+
+//***********************************
+//************* Dallas
+//***********************************
+#define TEMPERATURE_PRECISION 10
+#define ONE_WIRE_BUS D7
+
+OneWire  ds(ONE_WIRE_BUS);  //  (a 4.7K resistor is necessary - 5.7K work with 3.3 ans 5V power)
+DallasTemperature sensors(&ds);
+DeviceAddress insideThermometer;
+
+  byte i;
+  byte present = 0;
+  byte type_s;
+  byte data[12];
+  byte addr[8];
+  float celsius = 0.00 ;
+  byte security = 0;
+  int refresh = 30;
+  int refreshcount = 0; 
 
 /***************************
  * End Settings
@@ -174,7 +196,7 @@ void loadConfiguration(const char *filename, Config &config) {
   // Allocate a temporary JsonDocument
   // Don't forget to change the capacity to match your requirements.
   // Use arduinojson.org/v6/assistant to compute the capacity.
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<1024> doc;
 
   // Deserialize the JSON document
   DeserializationError error = deserializeJson(doc, configFile);
@@ -252,7 +274,7 @@ const char* PARAM_INPUT_1 = "POWER"; /// paramettre de retour sendmode
 String getState() {
   String state; 
   int pow=dimmer.getPower(); 
-  state = String(pow)  ; 
+  state = String(pow) + ";" + String(celsius) ; 
   return String(state);
 }
 
@@ -265,14 +287,25 @@ String processor(const String& var){
     if (var == "VERSION"){
     return (VERSION);
   } 
-
+  if (var == "TIME"){
+    return getTime();
+  } 
 } 
  
-
+void call_time() {
+  //if ( timesync_refresh >= timesync ) {  timeClient.update(); timesync = 0; }
+  //else {timesync++;} 
+} 
+ 
+String getTime() {
+  String state=""; 
+ // state = timeClient.getHours() + ":" + timeClient.getMinutes() ; 
+  return String(state);
+}
 
 String getconfig() {
   String configweb;  
-  configweb = String(config.hostname) + ";" +  config.port + ";"  + config.IDX + ";"  + config.Publish;
+  configweb = String(config.hostname) + ";" +  config.port + ";"  + config.IDX + ";"  +  config.IDXAlarme +";"+config.maxtemp+";"+config.Publish;
   return String(configweb);
 }
 
@@ -377,6 +410,9 @@ void setup() {
     request->send_P(200, "text/plain", getState().c_str());
   });
 
+  server.on("/time", HTTP_ANY, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/plain", getTime().c_str());
+  });
 
   server.on("/all.min.css", HTTP_ANY, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/all.min.css", "text/css");
@@ -414,6 +450,9 @@ server.on("/set", HTTP_ANY, [] (AsyncWebServerRequest *request) {
                           
    if (request->hasParam("hostname")) { request->getParam("hostname")->value().toCharArray(config.hostname,15);  }
    if (request->hasParam("port")) { config.port = request->getParam("port")->value().toInt();}
+   if (request->hasParam("IDX")) { config.IDX = request->getParam("IDX")->value().toInt();}
+   if (request->hasParam("IDXAlarme")) { config.IDXAlarme = request->getParam("IDXAlarme")->value().toInt();}
+   if (request->hasParam("maxtemp")) { config.maxtemp = request->getParam("maxtemp")->value().toInt();}
    if (request->hasParam("Publish")) { request->getParam("Publish")->value().toCharArray(config.Publish,100);}
    request->send(200, "text/html", getconfig().c_str());
 
@@ -434,8 +473,15 @@ server.on("/set", HTTP_ANY, [] (AsyncWebServerRequest *request) {
  // timeClient.begin();
  // timeClient.update();
   
+  Serial.println("start 18b20");
+  sensors.begin();
+  /*if (!sensors.getAddress(insideThermometer, 0)) Serial.println("Unable to find address for Device 0"); 
+  Serial.print("Device 0 Address: ");
+  printAddress(insideThermometer);
+  sensors.setResolution(insideThermometer, 9);
+*/
   
-
+  dallaspresent();
 
   client.connect("Dimmer");
   client.setServer(config.hostname, 1883);
@@ -445,6 +491,20 @@ server.on("/set", HTTP_ANY, [] (AsyncWebServerRequest *request) {
 
 void loop() {
 
+  if ( security == 1 ) { 
+      Serial.println("Alerte Temp");
+      mqtt(config.IDXAlarme, String("Alerte Temp :" + String(celsius) ));  
+    //// Trigger
+      if ( celsius <= config.maxtemp - 5 ) { 
+       security = 0 ;
+      }
+      else {
+      dimmer.setPower(0); 
+      }
+  }
+
+
+
   /// Changement de la puissance (  pb de Exception 9 si call direct ) 
   if ( change == 1  ) {
 
@@ -452,6 +512,27 @@ void loop() {
   change = 0; 
   }
 
+ ///// dallas présent >> mesure 
+  if ( present == 1 ) { 
+ refreshcount ++; 
+
+  sensors.requestTemperatures();
+  celsius=CheckTemperature("Inside : ", addr); 
+
+  if ( refreshcount >= refresh ) {
+    mqtt(config.IDX, String(celsius));  
+    refreshcount = 0; 
+  } 
+  
+  delay(500); 
+  } 
+
+    //***********************************
+    //************* LOOP - Activation de la sécurité
+    //***********************************
+if ( celsius >= config.maxtemp ) {
+  security = 1 ; 
+}
 
 ///  changement de la puissance
 
@@ -462,7 +543,87 @@ void loop() {
 }
 
 
+
+    //***********************************
+    //************* récupération d'une température du 18b20
+    //***********************************
+
+float CheckTemperature(String label, byte deviceAddress[12]){
+  float tempC = sensors.getTempC(deviceAddress);
+  Serial.print(label);
+  if (tempC == -127.00) {
+    Serial.print("Error getting temperature");
+  } else {
+    Serial.print(" Temp C: ");
+    Serial.println(tempC);
+    return (tempC); 
+   
+    
+  }  
+}
+
+
+    //***********************************
+    //************* Test de la présence d'une 18b20 
+    //***********************************
+
+void dallaspresent () {
+
+if ( !ds.search(addr)) {
+    Serial.println("Dallas not connected");
+    Serial.println();
+    ds.reset_search();
+    delay(250);
+    return ;
+  }
   
+  Serial.print("ROM =");
+  for( i = 0; i < 8; i++) {
+    Serial.write(' ');
+    Serial.print(addr[i], HEX);
+  }
+
+   Serial.println();
+ 
+  // the first ROM byte indicates which chip
+  switch (addr[0]) {
+    case 0x10:
+      Serial.println("  Chip = DS18S20");  // or old DS1820
+      type_s = 1;
+      break;
+    case 0x28:
+      Serial.println("  Chip = DS18B20");
+      type_s = 0;
+      break;
+    case 0x22:
+      Serial.println("  Chip = DS1822");
+      type_s = 0;
+      break;
+    default:
+      Serial.println("Device is not a DS18x20 family device.");
+      return ;
+  } 
+
+  ds.reset();
+  ds.select(addr);
+  ds.write(0x44, 1);        // start conversion, with parasite power on at the end
+  
+  delay(1000);     // maybe 750ms is enough, maybe not
+  // we might do a ds.depower() here, but the reset will take care of it.
+  
+  present = ds.reset();    ///  byte 0 > 1 si present
+  ds.select(addr);    
+  ds.write(0xBE);         // Read Scratchpad
+
+  Serial.print("  present = ");
+  Serial.println(present, HEX);
+
+
+  return ;
+  
+  
+  }
+
 void reconnect() {
   // Loop until we're reconnected
   while (!client.connected()) {
@@ -495,13 +656,10 @@ void mqtt(String idx, String value)
   if ( value != "0" ) { nvalue = "2" ; }
 String message = "  { \"idx\" : " + idx +" ,   \"svalue\" : \"" + value + "\",  \"nvalue\" : " + nvalue + "  } ";
 
-/*  if (!client.connected()) {
-    reconnect();
-  }*/
+//  if (!client.connected()) {
+//    reconnect();
+ // }
 client.loop();
   client.publish(config.Publish, String(message).c_str(), true);
   
 }
-
-
-
